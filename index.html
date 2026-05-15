@@ -1,45 +1,340 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BBplayer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Babylon WebXR Persistent Viewer</title>
+    <!-- Babylon.js エンジンの読み込み -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: sans-serif; user-select: none; -webkit-user-select: none; }
+        #renderCanvas { width: 100%; height: 100%; touch-action: none; outline: none; }
         
-        body {
-            font-family: Arial, sans-serif;
-            background-color: #1a1a1a;
-            color: #fff;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-        }
-        
-        .container {
-            text-align: center;
-        }
-        
-        h1 {
-            margin-bottom: 20px;
-            font-size: 2.5em;
-        }
-        
-        p {
-            font-size: 1.1em;
-            color: #ccc;
-        }
+        /* ローディング画面 */
+        #loading { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); color: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
+        #loading.active { opacity: 1; pointer-events: auto; }
+        #loading h2 { margin: 0 0 10px 0; }
+        #loading-text { font-size: 14px; color: #ccc; }
+
+        /* ヘッダーUI */
+        #header-ui { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; z-index: 10; }
+        .panel { background: rgba(0, 0, 0, 0.6); padding: 10px; border-radius: 8px; color: white; border: 1px solid #555; backdrop-filter: blur(4px); }
+        .btn { background: #333; color: white; border: 1px solid #666; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 14px; }
+        .btn:active { background: #555; }
+
+        /* スマホ用 移動UI (D-pad) */
+        #move-ui { position: absolute; bottom: 20px; left: 20px; z-index: 10; display: grid; grid-template-columns: 50px 50px 50px; grid-gap: 5px; }
+        #move-ui .space { visibility: hidden; }
+        #move-ui-updown { position: absolute; bottom: 20px; right: 20px; z-index: 10; display: flex; flex-direction: column; gap: 5px; }
+        .dpad-btn { width: 50px; height: 50px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; color: white; font-weight: bold; display: flex; justify-content: center; align-items: center; font-size: 18px; touch-action: manipulation; cursor: pointer; }
+        .dpad-btn:active { background: rgba(255,255,255,0.6); }
+
+        /* 設定モーダル */
+        #settings-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(20,20,20,0.95); border: 1px solid #777; border-radius: 10px; padding: 20px; z-index: 50; color: white; display: none; width: 300px; max-width: 80%; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        #settings-modal.active { display: block; }
+        .setting-row { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+        select { background: #333; color: white; border: 1px solid #666; padding: 5px; border-radius: 4px; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Welcome to BBplayer</h1>
-        <p>Your multimedia player application</p>
+
+    <!-- ローディングオーバーレイ -->
+    <div id="loading">
+        <h2>読込中...</h2>
+        <div id="loading-text">APIと通信しています</div>
     </div>
+
+    <!-- 上部UIコントロール -->
+    <div id="header-ui">
+        <div class="panel" style="display:flex; gap:10px; align-items:center;">
+            <button class="btn" onclick="toggleSettings()">⚙️ 設定</button>
+            <div id="filename-display">World: リスト取得中...</div>
+        </div>
+        <div class="panel" style="display:flex; gap:10px;">
+            <button class="btn" onclick="prevWorld()">◀ 前へ</button>
+            <button class="btn" onclick="nextWorld()">次へ ▶</button>
+        </div>
+    </div>
+
+    <!-- スマホ用 移動UI -->
+    <div id="move-ui">
+        <div class="space"></div>
+        <div class="dpad-btn" onpointerdown="startMove('w')" onpointerup="stopMove()" onpointerleave="stopMove()">W</div>
+        <div class="space"></div>
+        <div class="dpad-btn" onpointerdown="startMove('a')" onpointerup="stopMove()" onpointerleave="stopMove()">A</div>
+        <div class="dpad-btn" onpointerdown="startMove('s')" onpointerup="stopMove()" onpointerleave="stopMove()">S</div>
+        <div class="dpad-btn" onpointerdown="startMove('d')" onpointerup="stopMove()" onpointerleave="stopMove()">D</div>
+    </div>
+    <div id="move-ui-updown">
+        <div class="dpad-btn" onpointerdown="startMove('up')" onpointerup="stopMove()" onpointerleave="stopMove()">▲</div>
+        <div class="dpad-btn" onpointerdown="startMove('down')" onpointerup="stopMove()" onpointerleave="stopMove()">▼</div>
+    </div>
+
+    <!-- 設定モーダル -->
+    <div id="settings-modal">
+        <h3 style="margin-top:0; border-bottom:1px solid #555; padding-bottom:10px;">オプション</h3>
+        <div class="setting-row">
+            <label>自動切替:</label>
+            <select id="auto-switch" onchange="updateAutoSwitch()">
+                <option value="0">オフ</option>
+                <option value="5000">5秒</option>
+                <option value="10000">10秒</option>
+                <option value="30000">30秒</option>
+            </select>
+        </div>
+        <div class="setting-row">
+            <label>移動UI表示:</label>
+            <input type="checkbox" id="toggle-move-ui" checked onchange="toggleMoveUI()">
+        </div>
+        <div class="setting-row">
+            <label>ファイル名表示:</label>
+            <input type="checkbox" id="toggle-filename" checked onchange="toggleFilename()">
+        </div>
+        <div style="text-align: right; margin-top: 20px;">
+            <button class="btn" onclick="toggleSettings()" style="background: #ff4757;">閉じる</button>
+        </div>
+    </div>
+
+    <!-- 3D描画用キャンバス -->
+    <canvas id="renderCanvas"></canvas>
+
+    <script>
+        // =========================================================
+        // 🚀 設定: GAS APIサーバーのURL
+        // =========================================================
+        const GAS_API_URL = "https://script.google.com/macros/s/AKfycby6LBjdiOqDbtgmoQZAybLDQN-B-F9188sF5DkJE5ecdX9ydRiqSZHFLSGQ1DGPnSh7/exec";
+        
+        const canvas = document.getElementById("renderCanvas");
+        const engine = new BABYLON.Engine(canvas, true);
+        
+        let currentScene = null;
+        let camera = null;
+        let activeMeshes = [];
+        let activeLights = [];
+        let playlist = [];
+        let currentIndex = -1;
+        let autoSwitchTimer = null;
+        let moveState = null;
+        const MOVE_SPEED = 0.15;
+
+        // ---------------------------------------------------------
+        // 1. Babylon.js シーンの初期化
+        // ---------------------------------------------------------
+        async function createBaseScene() {
+            const scene = new BABYLON.Scene(engine);
+            scene.clearColor = new BABYLON.Color4(0.1, 0.1, 0.1, 1);
+            scene.collisionsEnabled = true;
+            scene.gravity = new BABYLON.Vector3(0, -0.9, 0);
+
+            // カメラ設定
+            camera = new BABYLON.UniversalCamera("UniversalCamera", new BABYLON.Vector3(0, 1.5, -5), scene);
+            camera.setTarget(BABYLON.Vector3.Zero());
+            camera.attachControl(canvas, true);
+            camera.checkCollisions = true;
+            camera.applyGravity = true;
+            camera.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
+            camera.speed = 0.3;
+
+            // 地面（テレポート・落下防止用）
+            const ground = BABYLON.MeshBuilder.CreateGround("base-ground", {width: 200, height: 200}, scene);
+            ground.checkCollisions = true;
+            const groundMat = new BABYLON.StandardMaterial("groundMat", scene);
+            groundMat.diffuseColor = new BABYLON.Color3(0.2, 0.2, 0.2);
+            ground.material = groundMat;
+
+            // WebXR (VRモード) の初期化
+            await scene.createDefaultXRExperienceAsync({ floorMeshes: [ground] });
+
+            // スマホUI用移動ループ
+            scene.onBeforeRenderObservable.add(() => {
+                if(moveState && camera) {
+                    const forward = camera.getDirection(BABYLON.Vector3.Forward());
+                    const right = camera.getDirection(BABYLON.Vector3.Right());
+                    const up = new BABYLON.Vector3(0, 1, 0);
+                    
+                    forward.y = 0; right.y = 0;
+                    forward.normalize(); right.normalize();
+
+                    if(moveState === 'w') camera.position.addInPlace(forward.scale(MOVE_SPEED));
+                    if(moveState === 's') camera.position.subtractInPlace(forward.scale(MOVE_SPEED));
+                    if(moveState === 'd') camera.position.addInPlace(right.scale(MOVE_SPEED));
+                    if(moveState === 'a') camera.position.subtractInPlace(right.scale(MOVE_SPEED));
+                    if(moveState === 'up') camera.position.addInPlace(up.scale(MOVE_SPEED));
+                    if(moveState === 'down') camera.position.subtractInPlace(up.scale(MOVE_SPEED));
+                }
+            });
+            return scene;
+        }
+
+        // ---------------------------------------------------------
+        // 2. データ取得 (Fetch API) とシームレス構築
+        // ---------------------------------------------------------
+        
+        // ファイルリストを取得 (?action=list)
+        async function fetchPlaylist() {
+            setLoadingText("ファイルリストを取得中...");
+            const res = await fetch(`${GAS_API_URL}?action=list`);
+            const data = await res.json();
+            if(data.error) throw new Error(data.error);
+            return data;
+        }
+
+        // 個別のHTMLデータを取得 (?action=get&id=...)
+        async function fetchHtmlData(fileId) {
+            setLoadingText("空間データをダウンロード中...");
+            const res = await fetch(`${GAS_API_URL}?action=get&id=${fileId}`);
+            return await res.text();
+        }
+
+        async function loadWorld(index) {
+            if (playlist.length === 0) return;
+            // ループ処理
+            if (index < 0) index = playlist.length - 1;
+            if (index >= playlist.length) index = 0;
+            
+            currentIndex = index;
+            const fileInfo = playlist[currentIndex];
+            
+            document.getElementById("filename-display").innerText = `World: ${fileInfo.name}`;
+            showLoading(true);
+
+            try {
+                // GAS経由でHTMLテキストを取得
+                const htmlText = await fetchHtmlData(fileInfo.id);
+                
+                // DOMパーサーで scene-data JSONを抽出
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(htmlText, "text/html");
+                const scriptTag = doc.getElementById("scene-data");
+
+                if (!scriptTag) {
+                    console.warn("JSONが見つかりません。");
+                    document.getElementById("filename-display").innerText = `[JSONなし] ${fileInfo.name}`;
+                } else {
+                    const sceneData = JSON.parse(scriptTag.textContent);
+                    applyWorldData(sceneData); // アセットの上書き構築
+                }
+            } catch (e) {
+                console.error("Load error:", e);
+                document.getElementById("filename-display").innerText = `[読込エラー] ${fileInfo.name}`;
+            } finally {
+                showLoading(false);
+                resetAutoSwitch(); // タイマーリセット
+            }
+        }
+
+        // 抽出したJSONをもとにアセットを動的に上書きする
+        function applyWorldData(data) {
+            // 古いメッシュとライトをクリーンアップ
+            activeMeshes.forEach(m => m.dispose());
+            activeLights.forEach(l => l.dispose());
+            activeMeshes = [];
+            activeLights = [];
+
+            // 背景色
+            if (data.clearColor) currentScene.clearColor = BABYLON.Color4.FromHexString(data.clearColor);
+
+            // ライト構築
+            if (data.lights) {
+                data.lights.forEach((l, i) => {
+                    let light = (l.type === "DirectionalLight") 
+                        ? new BABYLON.DirectionalLight("l"+i, new BABYLON.Vector3(-1,-2,-1), currentScene)
+                        : new BABYLON.HemisphericLight("l"+i, new BABYLON.Vector3(0,1,0), currentScene);
+                    if(l.intensity) light.intensity = l.intensity;
+                    activeLights.push(light);
+                });
+            }
+
+            // メッシュ構築
+            if (data.meshes) {
+                data.meshes.forEach((m, i) => {
+                    let mesh;
+                    if(m.type === "Box") mesh = BABYLON.MeshBuilder.CreateBox("m"+i, {size: m.size || 1}, currentScene);
+                    if(m.type === "Sphere") mesh = BABYLON.MeshBuilder.CreateSphere("m"+i, {diameter: m.diameter || 1}, currentScene);
+                    if(m.type === "Cylinder") mesh = BABYLON.MeshBuilder.CreateCylinder("m"+i, {height: m.height||1, diameter: m.diameter||1}, currentScene);
+                    
+                    if (mesh) {
+                        if(m.position) mesh.position = new BABYLON.Vector3(m.position[0], m.position[1], m.position[2]);
+                        if(m.scale) mesh.scaling = new BABYLON.Vector3(m.scale[0], m.scale[1], m.scale[2]);
+                        
+                        mesh.checkCollisions = true;
+                        
+                        if(m.color) {
+                            const mat = new BABYLON.StandardMaterial("mat"+i, currentScene);
+                            mat.diffuseColor = BABYLON.Color3.FromHexString(m.color);
+                            mesh.material = mat;
+                        }
+                        activeMeshes.push(mesh);
+                    }
+                });
+            }
+            
+            // カメラ位置を初期位置に戻す
+            camera.position = new BABYLON.Vector3(0, 1.5, -5);
+        }
+
+        // ---------------------------------------------------------
+        // 3. UIコントロール・起動シーケンス
+        // ---------------------------------------------------------
+        function prevWorld() { loadWorld(currentIndex - 1); }
+        function nextWorld() { loadWorld(currentIndex + 1); }
+        
+        function showLoading(show) {
+            const el = document.getElementById("loading");
+            if(show) el.classList.add("active");
+            else el.classList.remove("active");
+        }
+        function setLoadingText(text) {
+            document.getElementById("loading-text").innerText = text;
+        }
+
+        function startMove(dir) { moveState = dir; }
+        function stopMove() { moveState = null; }
+
+        function toggleSettings() { document.getElementById("settings-modal").classList.toggle("active"); }
+        function toggleMoveUI() {
+            const show = document.getElementById("toggle-move-ui").checked;
+            document.getElementById("move-ui").style.display = show ? "grid" : "none";
+            document.getElementById("move-ui-updown").style.display = show ? "flex" : "none";
+        }
+        function toggleFilename() {
+            const show = document.getElementById("toggle-filename").checked;
+            document.getElementById("filename-display").style.display = show ? "block" : "none";
+        }
+        
+        function updateAutoSwitch() { resetAutoSwitch(); }
+        function resetAutoSwitch() {
+            if(autoSwitchTimer) clearInterval(autoSwitchTimer);
+            const interval = parseInt(document.getElementById("auto-switch").value, 10);
+            if(interval > 0) autoSwitchTimer = setInterval(() => { nextWorld(); }, interval);
+        }
+
+        // --- 起動 ---
+        createBaseScene().then(scene => {
+            currentScene = scene;
+            engine.runRenderLoop(() => { scene.render(); });
+            
+            showLoading(true);
+
+            // GAS APIからプレイリストを取得して最初のワールドをロード
+            fetchPlaylist().then(list => {
+                playlist = list;
+                if(playlist.length > 0) {
+                    loadWorld(0);
+                } else {
+                    showLoading(false);
+                    document.getElementById("filename-display").innerText = "フォルダーにファイルがありません";
+                }
+            }).catch(err => {
+                console.error("リスト取得エラー:", err);
+                showLoading(false);
+                document.getElementById("filename-display").innerText = "リスト取得エラー";
+                setLoadingText("APIとの通信に失敗しました");
+            });
+        });
+
+        // 画面リサイズ対応
+        window.addEventListener("resize", () => { engine.resize(); });
+    </script>
 </body>
 </html>
