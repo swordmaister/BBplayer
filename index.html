@@ -6,32 +6,31 @@
     <title>Babylon WebXR Advanced Viewer</title>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: sans-serif; user-select: none; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: sans-serif; user-select: none; touch-action: none; }
         #renderCanvas { width: 100%; height: 100%; touch-action: none; outline: none; }
         
         #loading { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); color: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
         #loading.active { opacity: 1; pointer-events: auto; }
         #loading h2 { margin: 0 0 10px 0; }
-        #loading-text { font-size: 14px; color: #ccc; }
 
-        #header-ui { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; z-index: 10; }
-        .panel { background: rgba(0, 0, 0, 0.6); padding: 10px; border-radius: 8px; color: white; border: 1px solid #555; backdrop-filter: blur(4px); display:flex; gap:10px; align-items:center;}
+        /* 🌟 コンテナ自体のタッチ判定を消し(none)、中身のボタンだけ判定を残す(auto) */
+        #header-ui { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; z-index: 10; pointer-events: none; }
+        .panel { background: rgba(0, 0, 0, 0.6); padding: 10px; border-radius: 8px; color: white; border: 1px solid #555; backdrop-filter: blur(4px); display:flex; gap:10px; align-items:center; pointer-events: auto; }
         .btn { background: #333; color: white; border: 1px solid #666; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
         .btn:active { background: #555; }
 
-        /* スマホ用 移動UI (WASD + 上下) */
-        #move-ui { position: absolute; bottom: 20px; left: 20px; z-index: 10; display: grid; grid-template-columns: 50px 50px 50px; grid-gap: 5px; }
+        /* 移動UI (WASD + 上下) */
+        #move-ui { position: absolute; bottom: 20px; left: 20px; z-index: 10; display: grid; grid-template-columns: 50px 50px 50px; grid-gap: 5px; pointer-events: none; }
         #move-ui .space { visibility: hidden; }
-        #move-ui-updown { position: absolute; bottom: 20px; right: 20px; z-index: 10; display: flex; flex-direction: column; gap: 5px; }
-        
-        .dpad-btn { width: 50px; height: 50px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; color: white; font-weight: bold; display: flex; justify-content: center; align-items: center; font-size: 18px; touch-action: manipulation; cursor: pointer; }
+        #move-ui-updown { position: absolute; bottom: 20px; right: 20px; z-index: 10; display: flex; flex-direction: column; gap: 5px; pointer-events: none; }
+        .dpad-btn { width: 50px; height: 50px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; color: white; font-weight: bold; display: flex; justify-content: center; align-items: center; font-size: 18px; touch-action: manipulation; cursor: pointer; pointer-events: auto; }
         .dpad-btn:active { background: rgba(255,255,255,0.6); }
 
         /* 設定モーダル */
-        #settings-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(20,20,20,0.95); border: 1px solid #777; border-radius: 10px; padding: 20px; z-index: 50; color: white; display: none; width: 300px; max-width: 80%; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        #settings-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(20,20,20,0.95); border: 1px solid #777; border-radius: 10px; padding: 20px; z-index: 50; color: white; display: none; width: 300px; max-width: 80%; box-shadow: 0 4px 15px rgba(0,0,0,0.5); pointer-events: auto; }
         #settings-modal.active { display: block; }
         .setting-row { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
-        select { background: #333; color: white; border: 1px solid #666; padding: 5px; border-radius: 4px; }
+        select { background: #333; color: white; border: 1px solid #666; padding: 5px; border-radius: 4px; max-width: 150px; }
     </style>
 </head>
 <body>
@@ -52,22 +51,27 @@
         </div>
     </div>
 
+    <!-- 移動用ジョイスティック -->
     <div id="move-ui">
-        <div class="space"></div>
-        <div class="dpad-btn" onpointerdown="startMove('w')" onpointerup="stopMove()" onpointerleave="stopMove()">W</div>
-        <div class="space"></div>
+        <div class="space"></div><div class="dpad-btn" onpointerdown="startMove('w')" onpointerup="stopMove()" onpointerleave="stopMove()">W</div><div class="space"></div>
         <div class="dpad-btn" onpointerdown="startMove('a')" onpointerup="stopMove()" onpointerleave="stopMove()">A</div>
         <div class="dpad-btn" onpointerdown="startMove('s')" onpointerup="stopMove()" onpointerleave="stopMove()">S</div>
         <div class="dpad-btn" onpointerdown="startMove('d')" onpointerup="stopMove()" onpointerleave="stopMove()">D</div>
     </div>
-
+    
+    <!-- 上昇・下降ボタン -->
     <div id="move-ui-updown">
         <div class="dpad-btn" onpointerdown="startMove('up')" onpointerup="stopMove()" onpointerleave="stopMove()">▲</div>
         <div class="dpad-btn" onpointerdown="startMove('down')" onpointerup="stopMove()" onpointerleave="stopMove()">▼</div>
     </div>
 
+    <!-- 設定メニュー -->
     <div id="settings-modal">
         <h3 style="margin-top:0; border-bottom:1px solid #555; padding-bottom:10px;">オプション</h3>
+        <div class="setting-row">
+            <label>ワールド選択:</label>
+            <select id="fileSelect" onchange="loadWorldFromSelect()"></select>
+        </div>
         <div class="setting-row">
             <label>自動切替:</label>
             <select id="auto-switch" onchange="updateAutoSwitch()">
@@ -81,10 +85,6 @@
             <label>移動UI表示:</label>
             <input type="checkbox" id="toggle-move-ui" checked onchange="toggleMoveUI()">
         </div>
-        <div class="setting-row">
-            <label>ファイル名表示:</label>
-            <input type="checkbox" id="toggle-filename" checked onchange="toggleFilename()">
-        </div>
         <div style="text-align: right; margin-top: 20px;">
             <button class="btn" onclick="toggleSettings()" style="background: #ff4757;">閉じる</button>
         </div>
@@ -93,9 +93,6 @@
     <canvas id="renderCanvas"></canvas>
 
     <script>
-        // =========================================================
-        // 🚀 設定: GAS APIサーバーのURL
-        // =========================================================
         const GAS_API_URL = "https://script.google.com/macros/s/AKfycby6LBjdiOqDbtgmoQZAybLDQN-B-F9188sF5DkJE5ecdX9ydRiqSZHFLSGQ1DGPnSh7/exec";
         
         const canvas = document.getElementById("renderCanvas");
@@ -109,51 +106,85 @@
         const MOVE_SPEED = 0.15;
 
         // ---------------------------------------------------------
-        // 1. 基盤シーンとMeta Quest 2 (WebXR) の設定
+        // 1. 基盤シーンとUI・操作の設定
         // ---------------------------------------------------------
         async function createBaseScene() {
             const scene = new BABYLON.Scene(engine);
             scene.clearColor = new BABYLON.Color4(0.5, 0.8, 0.9, 1);
             scene.collisionsEnabled = true;
 
-            // PC/スマホ用カメラ（キャンバスに対するスワイプ・ドラッグで首振りが可能）
+            // カメラ作成
             camera = new BABYLON.UniversalCamera("UniversalCamera", new BABYLON.Vector3(0, 5, -20), scene);
-            camera.setTarget(BABYLON.Vector3.Zero());
-            camera.attachControl(canvas, true); 
             camera.checkCollisions = true;
             camera.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
 
+            // 🌟 デフォルトの干渉する入力を消し、スワイプでの「首振り」を自作
+            camera.inputs.clear();
+            
+            let isPointerDown = false;
+            let lastX = 0, lastY = 0;
+
+            scene.onPointerObservable.add((pi) => {
+                if (pi.type === BABYLON.PointerEventTypes.POINTERDOWN) {
+                    isPointerDown = true;
+                    lastX = pi.event.clientX;
+                    lastY = pi.event.clientY;
+                }
+                else if (pi.type === BABYLON.PointerEventTypes.POINTERUP || pi.type === BABYLON.PointerEventTypes.POINTEROUT) {
+                    isPointerDown = false;
+                }
+                else if (pi.type === BABYLON.PointerEventTypes.POINTERMOVE && isPointerDown) {
+                    let currentX = pi.event.clientX;
+                    let currentY = pi.event.clientY;
+                    
+                    let dx = currentX - lastX;
+                    let dy = currentY - lastY;
+                    
+                    // 🌟 A-Frame版と完全に同じ感覚（スワイプした方向の逆に視点が動く）にするためマイナス計算
+                    camera.rotation.y -= dx * 0.005;
+                    camera.rotation.x -= dy * 0.005;
+                    
+                    // 真上・真下を向きすぎないように制限
+                    camera.rotation.x = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camera.rotation.x));
+                    
+                    lastX = currentX;
+                    lastY = currentY;
+                }
+            });
+
+            // PC用のキーボード移動対応
+            window.addEventListener('keydown', (e) => {
+                const key = e.key.toLowerCase();
+                if(key === 'w') moveState = 'w';
+                if(key === 'a') moveState = 'a';
+                if(key === 's') moveState = 's';
+                if(key === 'd') moveState = 'd';
+                if(e.key === 'ArrowUp') moveState = 'up';
+                if(e.key === 'ArrowDown') moveState = 'down';
+            });
+            window.addEventListener('keyup', () => { moveState = null; });
+
+            // VR移行時用ベース
             const baseGround = BABYLON.MeshBuilder.CreateGround("base-ground", {width: 500, height: 500}, scene);
             baseGround.checkCollisions = true;
-            baseGround.isVisible = false; 
+            baseGround.isVisible = false;
 
-            // Meta Quest 2 用 WebXR 初期化
+            xrHelper = await scene.createDefaultXRExperienceAsync({ floorMeshes: [baseGround] });
             try {
-                xrHelper = await scene.createDefaultXRExperienceAsync({
-                    floorMeshes: [baseGround]
-                });
                 xrHelper.baseExperience.featuresManager.enableFeature(BABYLON.WebXRFeatureName.MOVEMENT, "latest", {
-                    xrInput: xrHelper.input,
-                    movementSpeed: 0.1,
-                    rotationSpeed: 0.05
+                    xrInput: xrHelper.input, movementSpeed: 0.1, rotationSpeed: 0.05
                 });
-            } catch(e) { 
-                console.warn("このデバイスはWebXR非対応です（通常モードで動作します）:", e); 
-            }
+            } catch(e) {}
 
-            // アニメーションとUI移動のループ
             scene.onBeforeRenderObservable.add(() => {
                 const time = performance.now() * 0.001;
                 const dt = engine.getDeltaTime() * 0.001;
 
                 currentAnimatables.forEach(item => {
                     const a = item.anim, m = item.mesh, axis = a.axis || 'y', speed = a.speed || 1;
-                    if(!m || m.isDisposed()) return;
-                    
                     if (a.type === 'rotate') m.rotation[axis] += speed * dt;
                     else if (a.type === 'move_pingpong') {
-                        const dist = a.distance || 5;
-                        m.position[axis] = item.initPos[axis] + Math.sin(time * speed + item.offset) * dist;
+                        m.position[axis] = item.initPos[axis] + Math.sin(time * speed + item.offset) * (a.distance || 5);
                     }
                     else if (a.type === 'move_loop') {
                         const dist = a.distance || 20;
@@ -161,26 +192,18 @@
                     }
                 });
 
-                const isInVR = xrHelper && xrHelper.baseExperience && xrHelper.baseExperience.state === BABYLON.WebXRState.IN_XR;
-
-                // スマホ用UIでの移動処理
-                if(moveState && camera && !isInVR) {
+                // 上下左右・上昇下降の移動処理
+                if(moveState && camera && (!xrHelper.baseExperience.state || xrHelper.baseExperience.state === BABYLON.WebXRState.NOT_IN_XR)) {
                     const forward = camera.getDirection(BABYLON.Vector3.Forward());
                     const right = camera.getDirection(BABYLON.Vector3.Right());
-                    const up = new BABYLON.Vector3(0, 1, 0); // 上下移動用ベクトル
+                    const up = new BABYLON.Vector3(0, 1, 0);
                     
-                    forward.y = 0; right.y = 0; 
-                    if (forward.lengthSquared() > 0.001) forward.normalize();
-                    else forward.copyFromFloats(0, 0, 1);
+                    forward.y = 0; right.y = 0; forward.normalize(); right.normalize();
                     
-                    if (right.lengthSquared() > 0.001) right.normalize();
-                    else right.copyFromFloats(1, 0, 0);
-
                     if(moveState === 'w') camera.position.addInPlace(forward.scale(MOVE_SPEED));
                     if(moveState === 's') camera.position.subtractInPlace(forward.scale(MOVE_SPEED));
                     if(moveState === 'd') camera.position.addInPlace(right.scale(MOVE_SPEED));
                     if(moveState === 'a') camera.position.subtractInPlace(right.scale(MOVE_SPEED));
-                    // 🌟 復活: 上下ボタンの処理
                     if(moveState === 'up') camera.position.addInPlace(up.scale(MOVE_SPEED));
                     if(moveState === 'down') camera.position.subtractInPlace(up.scale(MOVE_SPEED));
                 }
@@ -190,7 +213,7 @@
         }
 
         // ---------------------------------------------------------
-        // 2. 高度なJSON（アニメーション対応版）の構築エンジン
+        // 2. データ取得とパース
         // ---------------------------------------------------------
         const getMaterial = (item, scene) => {
             const mat = new BABYLON.StandardMaterial("mat_" + Math.random(), scene);
@@ -211,7 +234,7 @@
             }
             if (item.position) mesh.position = new BABYLON.Vector3(item.position[0], item.position[1], item.position[2]);
             mesh.material = getMaterial(item, scene);
-            mesh.checkCollisions = true; 
+            mesh.checkCollisions = true;
             return mesh;
         };
 
@@ -221,9 +244,8 @@
             activeTemplates.forEach(t => t.dispose());
             activeMeshes = []; activeLights = []; activeTemplates = []; currentAnimatables = [];
 
-            if (env.clearColor) {
-                currentScene.clearColor = BABYLON.Color4.FromHexString(env.clearColor.padEnd(9, 'F'));
-            }
+            if (env.clearColor) currentScene.clearColor = BABYLON.Color4.FromHexString(env.clearColor.padEnd(9, 'F'));
+            
             if (env.lights) {
                 env.lights.forEach((l, i) => {
                     const dir = l.dir || [0, 1, 0];
@@ -240,10 +262,7 @@
                     }
                 });
             }
-            if (env.ground) {
-                const ground = createMeshFromItem(env.ground, "env-ground", currentScene);
-                activeMeshes.push(ground);
-            }
+            if (env.ground) activeMeshes.push(createMeshFromItem(env.ground, "env-ground", currentScene));
 
             if (sub.templates && sub.instances) {
                 const templatesMap = {};
@@ -257,7 +276,6 @@
                 sub.instances.forEach((inst, i) => {
                     const tpl = templatesMap[inst.templateId];
                     if (!tpl) return;
-
                     if (inst.positions) {
                         inst.positions.forEach((pos, j) => {
                             const newInst = tpl.createInstance("inst_" + i + "_" + j);
@@ -267,7 +285,6 @@
                             activeMeshes.push(newInst);
                         });
                     }
-
                     if (inst.scatter) {
                         const s = inst.scatter, count = s.count || 10, rx = s.rangeX || [-10, 10], rz = s.rangeZ || [-10, 10], by = s.baseY || 0, scaleR = s.randomScale || [1, 1];
                         for (let k = 0; k < count; k++) {
@@ -277,7 +294,6 @@
                             const sc = Math.random() * (scaleR[1] - scaleR[0]) + scaleR[0];
                             newInst.scaling = new BABYLON.Vector3(sc, sc, sc);
                             newInst.checkCollisions = true;
-                            
                             if(inst.animation) currentAnimatables.push({ mesh: newInst, anim: inst.animation, initPos: newInst.position.clone(), offset: Math.random() * Math.PI * 2 });
                             activeMeshes.push(newInst);
                         }
@@ -285,20 +301,30 @@
                 });
             }
             
-            const isInVR = xrHelper && xrHelper.baseExperience && xrHelper.baseExperience.state === BABYLON.WebXRState.IN_XR;
-            if (!isInVR) {
+            if (!xrHelper.baseExperience.state || xrHelper.baseExperience.state === BABYLON.WebXRState.NOT_IN_XR) {
                 camera.position = new BABYLON.Vector3(0, 5, -20);
                 camera.setTarget(new BABYLON.Vector3(0, 5, 0));
             }
         }
 
         // ---------------------------------------------------------
-        // 3. 通信・UI制御ロジック
+        // 3. UI・通信ロジック
         // ---------------------------------------------------------
         async function fetchPlaylist() {
             document.getElementById("loading-text").innerText = "リストを取得中...";
             const res = await fetch(`${GAS_API_URL}?action=list`);
             return await res.json();
+        }
+
+        function populateFileSelect() {
+            const sel = document.getElementById("fileSelect");
+            sel.innerHTML = "";
+            playlist.forEach((f, i) => {
+                const opt = document.createElement("option");
+                opt.value = i;
+                opt.textContent = f.name;
+                sel.appendChild(opt);
+            });
         }
 
         async function loadWorld(index) {
@@ -308,6 +334,7 @@
             
             currentIndex = index;
             document.getElementById("filename-display").innerText = `World: ${playlist[currentIndex].name}`;
+            document.getElementById("fileSelect").value = currentIndex;
             document.getElementById("loading").classList.add("active");
 
             try {
@@ -325,37 +352,25 @@
                 } else {
                     document.getElementById("filename-display").innerText = `[非対応形式] ${playlist[currentIndex].name}`;
                 }
-            } catch (e) {
-                console.error("Load error:", e);
-                document.getElementById("filename-display").innerText = "読込エラーが発生しました";
-            } finally {
+            } catch (e) { console.error(e); } 
+            finally {
                 document.getElementById("loading").classList.remove("active");
-                resetAutoSwitch(); // ロード完了後にタイマーをリセット
+                resetAutoSwitch();
             }
         }
 
         function prevWorld() { loadWorld(currentIndex - 1); }
         function nextWorld() { loadWorld(currentIndex + 1); }
-        
-        // 移動ボタン関連
         function startMove(dir) { moveState = dir; }
         function stopMove() { moveState = null; }
-
-        // モーダル・UI関連 (🌟 復活)
-        function toggleSettings() { 
-            document.getElementById("settings-modal").classList.toggle("active"); 
-        }
+        function toggleSettings() { document.getElementById("settings-modal").classList.toggle("active"); }
+        function loadWorldFromSelect() { loadWorld(parseInt(document.getElementById("fileSelect").value, 10)); }
+        
         function toggleMoveUI() {
             const show = document.getElementById("toggle-move-ui").checked;
             document.getElementById("move-ui").style.display = show ? "grid" : "none";
             document.getElementById("move-ui-updown").style.display = show ? "flex" : "none";
         }
-        function toggleFilename() {
-            const show = document.getElementById("toggle-filename").checked;
-            document.getElementById("filename-display").style.display = show ? "block" : "none";
-        }
-        
-        // 自動切替関連 (🌟 復活)
         function updateAutoSwitch() { resetAutoSwitch(); }
         function resetAutoSwitch() {
             if(autoSwitchTimer) clearInterval(autoSwitchTimer);
@@ -371,18 +386,14 @@
             document.getElementById("loading").classList.add("active");
             fetchPlaylist().then(list => {
                 playlist = list;
-                if(playlist.length > 0) loadWorld(0);
-                else {
+                if(playlist.length > 0) {
+                    populateFileSelect();
+                    loadWorld(0);
+                } else {
                     document.getElementById("loading").classList.remove("active");
-                    document.getElementById("filename-display").innerText = "ファイルが見つかりません";
                 }
-            }).catch(e => {
-                console.error("API通信エラー", e);
-                document.getElementById("loading-text").innerText = "通信に失敗しました。URL等を確認してください。";
             });
         });
-
-        // 画面リサイズ対応
         window.addEventListener("resize", () => { engine.resize(); });
     </script>
 </body>
