@@ -13,20 +13,17 @@
         #loading.active { opacity: 1; pointer-events: auto; }
         #loading h2 { margin: 0 0 10px 0; }
 
-        /* 🌟 コンテナ自体のタッチ判定を消し(none)、中身のボタンだけ判定を残す(auto) */
         #header-ui { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; z-index: 10; pointer-events: none; }
         .panel { background: rgba(0, 0, 0, 0.6); padding: 10px; border-radius: 8px; color: white; border: 1px solid #555; backdrop-filter: blur(4px); display:flex; gap:10px; align-items:center; pointer-events: auto; }
         .btn { background: #333; color: white; border: 1px solid #666; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
         .btn:active { background: #555; }
 
-        /* 移動UI (WASD + 上下) */
         #move-ui { position: absolute; bottom: 20px; left: 20px; z-index: 10; display: grid; grid-template-columns: 50px 50px 50px; grid-gap: 5px; pointer-events: none; }
         #move-ui .space { visibility: hidden; }
         #move-ui-updown { position: absolute; bottom: 20px; right: 20px; z-index: 10; display: flex; flex-direction: column; gap: 5px; pointer-events: none; }
         .dpad-btn { width: 50px; height: 50px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; color: white; font-weight: bold; display: flex; justify-content: center; align-items: center; font-size: 18px; touch-action: manipulation; cursor: pointer; pointer-events: auto; }
         .dpad-btn:active { background: rgba(255,255,255,0.6); }
 
-        /* 設定モーダル */
         #settings-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(20,20,20,0.95); border: 1px solid #777; border-radius: 10px; padding: 20px; z-index: 50; color: white; display: none; width: 300px; max-width: 80%; box-shadow: 0 4px 15px rgba(0,0,0,0.5); pointer-events: auto; }
         #settings-modal.active { display: block; }
         .setting-row { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
@@ -51,7 +48,6 @@
         </div>
     </div>
 
-    <!-- 移動用ジョイスティック -->
     <div id="move-ui">
         <div class="space"></div><div class="dpad-btn" onpointerdown="startMove('w')" onpointerup="stopMove()" onpointerleave="stopMove()">W</div><div class="space"></div>
         <div class="dpad-btn" onpointerdown="startMove('a')" onpointerup="stopMove()" onpointerleave="stopMove()">A</div>
@@ -59,13 +55,11 @@
         <div class="dpad-btn" onpointerdown="startMove('d')" onpointerup="stopMove()" onpointerleave="stopMove()">D</div>
     </div>
     
-    <!-- 上昇・下降ボタン -->
     <div id="move-ui-updown">
         <div class="dpad-btn" onpointerdown="startMove('up')" onpointerup="stopMove()" onpointerleave="stopMove()">▲</div>
         <div class="dpad-btn" onpointerdown="startMove('down')" onpointerup="stopMove()" onpointerleave="stopMove()">▼</div>
     </div>
 
-    <!-- 設定メニュー -->
     <div id="settings-modal">
         <h3 style="margin-top:0; border-bottom:1px solid #555; padding-bottom:10px;">オプション</h3>
         <div class="setting-row">
@@ -117,42 +111,30 @@
             camera = new BABYLON.UniversalCamera("UniversalCamera", new BABYLON.Vector3(0, 5, -20), scene);
             camera.checkCollisions = true;
             camera.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
-
-            // 🌟 デフォルトの干渉する入力を消し、スワイプでの「首振り」を自作
-            camera.inputs.clear();
+            camera.inputs.clear(); // 標準入力をクリア
             
-            let isPointerDown = false;
-            let lastX = 0, lastY = 0;
+            let isPointerDown = false, lastX = 0, lastY = 0;
 
+            // スワイプ（首振り）処理
             scene.onPointerObservable.add((pi) => {
                 if (pi.type === BABYLON.PointerEventTypes.POINTERDOWN) {
                     isPointerDown = true;
-                    lastX = pi.event.clientX;
-                    lastY = pi.event.clientY;
+                    lastX = pi.event.clientX; lastY = pi.event.clientY;
                 }
                 else if (pi.type === BABYLON.PointerEventTypes.POINTERUP || pi.type === BABYLON.PointerEventTypes.POINTEROUT) {
                     isPointerDown = false;
                 }
                 else if (pi.type === BABYLON.PointerEventTypes.POINTERMOVE && isPointerDown) {
-                    let currentX = pi.event.clientX;
-                    let currentY = pi.event.clientY;
-                    
-                    let dx = currentX - lastX;
-                    let dy = currentY - lastY;
-                    
-                    // 🌟 A-Frame版と完全に同じ感覚（スワイプした方向の逆に視点が動く）にするためマイナス計算
+                    let dx = pi.event.clientX - lastX;
+                    let dy = pi.event.clientY - lastY;
                     camera.rotation.y -= dx * 0.005;
                     camera.rotation.x -= dy * 0.005;
-                    
-                    // 真上・真下を向きすぎないように制限
                     camera.rotation.x = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camera.rotation.x));
-                    
-                    lastX = currentX;
-                    lastY = currentY;
+                    lastX = pi.event.clientX; lastY = pi.event.clientY;
                 }
             });
 
-            // PC用のキーボード移動対応
+            // キーボード移動処理
             window.addEventListener('keydown', (e) => {
                 const key = e.key.toLowerCase();
                 if(key === 'w') moveState = 'w';
@@ -164,22 +146,23 @@
             });
             window.addEventListener('keyup', () => { moveState = null; });
 
-            // VR移行時用ベース
+            // VR設定
             const baseGround = BABYLON.MeshBuilder.CreateGround("base-ground", {width: 500, height: 500}, scene);
-            baseGround.checkCollisions = true;
-            baseGround.isVisible = false;
+            baseGround.checkCollisions = true; baseGround.isVisible = false;
 
-            xrHelper = await scene.createDefaultXRExperienceAsync({ floorMeshes: [baseGround] });
             try {
+                xrHelper = await scene.createDefaultXRExperienceAsync({ floorMeshes: [baseGround] });
                 xrHelper.baseExperience.featuresManager.enableFeature(BABYLON.WebXRFeatureName.MOVEMENT, "latest", {
                     xrInput: xrHelper.input, movementSpeed: 0.1, rotationSpeed: 0.05
                 });
-            } catch(e) {}
+            } catch(e) { console.warn("VR/XR初期化スキップ:", e); }
 
+            // ★ クラッシュの原因だった移動計算を「安全な数学モデル」に変更
             scene.onBeforeRenderObservable.add(() => {
                 const time = performance.now() * 0.001;
                 const dt = engine.getDeltaTime() * 0.001;
 
+                // アニメーション処理
                 currentAnimatables.forEach(item => {
                     const a = item.anim, m = item.mesh, axis = a.axis || 'y', speed = a.speed || 1;
                     if (a.type === 'rotate') m.rotation[axis] += speed * dt;
@@ -192,20 +175,24 @@
                     }
                 });
 
-                // 上下左右・上昇下降の移動処理
-                if(moveState && camera && (!xrHelper.baseExperience.state || xrHelper.baseExperience.state === BABYLON.WebXRState.NOT_IN_XR)) {
-                    const forward = camera.getDirection(BABYLON.Vector3.Forward());
-                    const right = camera.getDirection(BABYLON.Vector3.Right());
-                    const up = new BABYLON.Vector3(0, 1, 0);
-                    
-                    forward.y = 0; right.y = 0; forward.normalize(); right.normalize();
-                    
-                    if(moveState === 'w') camera.position.addInPlace(forward.scale(MOVE_SPEED));
-                    if(moveState === 's') camera.position.subtractInPlace(forward.scale(MOVE_SPEED));
-                    if(moveState === 'd') camera.position.addInPlace(right.scale(MOVE_SPEED));
-                    if(moveState === 'a') camera.position.subtractInPlace(right.scale(MOVE_SPEED));
-                    if(moveState === 'up') camera.position.addInPlace(up.scale(MOVE_SPEED));
-                    if(moveState === 'down') camera.position.subtractInPlace(up.scale(MOVE_SPEED));
+                // 移動処理（VRモード中でない場合のみUIで動ける）
+                const isVR = xrHelper && xrHelper.baseExperience && xrHelper.baseExperience.state === BABYLON.WebXRState.IN_XR;
+                
+                if (moveState && camera && !isVR) {
+                    let dx = 0, dz = 0, dy = 0;
+                    if (moveState === 'w') dz = 1;
+                    if (moveState === 's') dz = -1;
+                    if (moveState === 'a') dx = -1;
+                    if (moveState === 'd') dx = 1;
+                    if (moveState === 'up') dy = 1;
+                    if (moveState === 'down') dy = -1;
+
+                    if (dx !== 0 || dz !== 0 || dy !== 0) {
+                        const rotY = camera.rotation.y;
+                        camera.position.x += (dx * Math.cos(rotY) + dz * Math.sin(rotY)) * MOVE_SPEED;
+                        camera.position.z += (-dx * Math.sin(rotY) + dz * Math.cos(rotY)) * MOVE_SPEED;
+                        camera.position.y += dy * MOVE_SPEED;
+                    }
                 }
             });
 
@@ -301,7 +288,8 @@
                 });
             }
             
-            if (!xrHelper.baseExperience.state || xrHelper.baseExperience.state === BABYLON.WebXRState.NOT_IN_XR) {
+            const isVR = xrHelper && xrHelper.baseExperience && xrHelper.baseExperience.state === BABYLON.WebXRState.IN_XR;
+            if (!isVR) {
                 camera.position = new BABYLON.Vector3(0, 5, -20);
                 camera.setTarget(new BABYLON.Vector3(0, 5, 0));
             }
