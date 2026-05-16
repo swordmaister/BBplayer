@@ -19,9 +19,19 @@
         .btn { background: #333; color: white; border: 1px solid #666; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
         .btn:active { background: #555; }
 
+        /* スマホ用 移動UI (WASD + 上下) */
         #move-ui { position: absolute; bottom: 20px; left: 20px; z-index: 10; display: grid; grid-template-columns: 50px 50px 50px; grid-gap: 5px; }
         #move-ui .space { visibility: hidden; }
+        #move-ui-updown { position: absolute; bottom: 20px; right: 20px; z-index: 10; display: flex; flex-direction: column; gap: 5px; }
+        
         .dpad-btn { width: 50px; height: 50px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; color: white; font-weight: bold; display: flex; justify-content: center; align-items: center; font-size: 18px; touch-action: manipulation; cursor: pointer; }
+        .dpad-btn:active { background: rgba(255,255,255,0.6); }
+
+        /* 設定モーダル */
+        #settings-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(20,20,20,0.95); border: 1px solid #777; border-radius: 10px; padding: 20px; z-index: 50; color: white; display: none; width: 300px; max-width: 80%; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+        #settings-modal.active { display: block; }
+        .setting-row { margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center; }
+        select { background: #333; color: white; border: 1px solid #666; padding: 5px; border-radius: 4px; }
     </style>
 </head>
 <body>
@@ -33,7 +43,7 @@
 
     <div id="header-ui">
         <div class="panel">
-            <button class="btn" onclick="toggleAutoSwitch()" id="auto-btn">自動切替: OFF</button>
+            <button class="btn" onclick="toggleSettings()">⚙️ 設定</button>
             <div id="filename-display">World: リスト取得中...</div>
         </div>
         <div class="panel">
@@ -51,6 +61,35 @@
         <div class="dpad-btn" onpointerdown="startMove('d')" onpointerup="stopMove()" onpointerleave="stopMove()">D</div>
     </div>
 
+    <div id="move-ui-updown">
+        <div class="dpad-btn" onpointerdown="startMove('up')" onpointerup="stopMove()" onpointerleave="stopMove()">▲</div>
+        <div class="dpad-btn" onpointerdown="startMove('down')" onpointerup="stopMove()" onpointerleave="stopMove()">▼</div>
+    </div>
+
+    <div id="settings-modal">
+        <h3 style="margin-top:0; border-bottom:1px solid #555; padding-bottom:10px;">オプション</h3>
+        <div class="setting-row">
+            <label>自動切替:</label>
+            <select id="auto-switch" onchange="updateAutoSwitch()">
+                <option value="0">オフ</option>
+                <option value="5000">5秒</option>
+                <option value="10000">10秒</option>
+                <option value="30000">30秒</option>
+            </select>
+        </div>
+        <div class="setting-row">
+            <label>移動UI表示:</label>
+            <input type="checkbox" id="toggle-move-ui" checked onchange="toggleMoveUI()">
+        </div>
+        <div class="setting-row">
+            <label>ファイル名表示:</label>
+            <input type="checkbox" id="toggle-filename" checked onchange="toggleFilename()">
+        </div>
+        <div style="text-align: right; margin-top: 20px;">
+            <button class="btn" onclick="toggleSettings()" style="background: #ff4757;">閉じる</button>
+        </div>
+    </div>
+
     <canvas id="renderCanvas"></canvas>
 
     <script>
@@ -64,7 +103,7 @@
         
         let currentScene = null, camera = null, xrHelper = null;
         let activeMeshes = [], activeLights = [], activeTemplates = [], currentAnimatables = [];
-        let playlist = [], currentIndex = -1, autoSwitchTimer = null, isAuto = false;
+        let playlist = [], currentIndex = -1, autoSwitchTimer = null;
         
         let moveState = null;
         const MOVE_SPEED = 0.15;
@@ -77,19 +116,18 @@
             scene.clearColor = new BABYLON.Color4(0.5, 0.8, 0.9, 1);
             scene.collisionsEnabled = true;
 
-            // PC/スマホ用カメラ
+            // PC/スマホ用カメラ（キャンバスに対するスワイプ・ドラッグで首振りが可能）
             camera = new BABYLON.UniversalCamera("UniversalCamera", new BABYLON.Vector3(0, 5, -20), scene);
             camera.setTarget(BABYLON.Vector3.Zero());
-            camera.attachControl(canvas, true);
+            camera.attachControl(canvas, true); 
             camera.checkCollisions = true;
             camera.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
 
-            // VR移行時も判定を保つための透明な巨大床
             const baseGround = BABYLON.MeshBuilder.CreateGround("base-ground", {width: 500, height: 500}, scene);
             baseGround.checkCollisions = true;
             baseGround.isVisible = false; 
 
-            // 🌟 修正1: VR非対応デバイスでのクラッシュを防ぐための安全な初期化
+            // Meta Quest 2 用 WebXR 初期化
             try {
                 xrHelper = await scene.createDefaultXRExperienceAsync({
                     floorMeshes: [baseGround]
@@ -103,14 +141,14 @@
                 console.warn("このデバイスはWebXR非対応です（通常モードで動作します）:", e); 
             }
 
-            // アニメーション用グローバルループ
+            // アニメーションとUI移動のループ
             scene.onBeforeRenderObservable.add(() => {
                 const time = performance.now() * 0.001;
                 const dt = engine.getDeltaTime() * 0.001;
 
                 currentAnimatables.forEach(item => {
                     const a = item.anim, m = item.mesh, axis = a.axis || 'y', speed = a.speed || 1;
-                    if(!m || m.isDisposed()) return; // 削除済みメッシュへのアクセス保護
+                    if(!m || m.isDisposed()) return;
                     
                     if (a.type === 'rotate') m.rotation[axis] += speed * dt;
                     else if (a.type === 'move_pingpong') {
@@ -123,16 +161,15 @@
                     }
                 });
 
-                // 🌟 修正2: 安全なVRモード判定（xrHelperが空でもクラッシュしない）
                 const isInVR = xrHelper && xrHelper.baseExperience && xrHelper.baseExperience.state === BABYLON.WebXRState.IN_XR;
 
-                // スマホ用UI移動処理
+                // スマホ用UIでの移動処理
                 if(moveState && camera && !isInVR) {
                     const forward = camera.getDirection(BABYLON.Vector3.Forward());
                     const right = camera.getDirection(BABYLON.Vector3.Right());
-                    forward.y = 0; right.y = 0; 
+                    const up = new BABYLON.Vector3(0, 1, 0); // 上下移動用ベクトル
                     
-                    // 🌟 修正3: 真下・真上を向いた時のベクトル消失によるクラッシュ(NaN)を防止
+                    forward.y = 0; right.y = 0; 
                     if (forward.lengthSquared() > 0.001) forward.normalize();
                     else forward.copyFromFloats(0, 0, 1);
                     
@@ -143,6 +180,9 @@
                     if(moveState === 's') camera.position.subtractInPlace(forward.scale(MOVE_SPEED));
                     if(moveState === 'd') camera.position.addInPlace(right.scale(MOVE_SPEED));
                     if(moveState === 'a') camera.position.subtractInPlace(right.scale(MOVE_SPEED));
+                    // 🌟 復活: 上下ボタンの処理
+                    if(moveState === 'up') camera.position.addInPlace(up.scale(MOVE_SPEED));
+                    if(moveState === 'down') camera.position.subtractInPlace(up.scale(MOVE_SPEED));
                 }
             });
 
@@ -176,7 +216,6 @@
         };
 
         function applyAdvancedWorldData(env, sub) {
-            // シームレス切替の要: 古いオブジェクトのクリーンアップ
             activeMeshes.forEach(m => m.dispose());
             activeLights.forEach(l => l.dispose());
             activeTemplates.forEach(t => t.dispose());
@@ -246,7 +285,6 @@
                 });
             }
             
-            // 🌟 修正4: VR中かどうかの判定も安全化
             const isInVR = xrHelper && xrHelper.baseExperience && xrHelper.baseExperience.state === BABYLON.WebXRState.IN_XR;
             if (!isInVR) {
                 camera.position = new BABYLON.Vector3(0, 5, -20);
@@ -255,7 +293,7 @@
         }
 
         // ---------------------------------------------------------
-        // 3. 通信・制御ロジック
+        // 3. 通信・UI制御ロジック
         // ---------------------------------------------------------
         async function fetchPlaylist() {
             document.getElementById("loading-text").innerText = "リストを取得中...";
@@ -292,19 +330,37 @@
                 document.getElementById("filename-display").innerText = "読込エラーが発生しました";
             } finally {
                 document.getElementById("loading").classList.remove("active");
-                if(isAuto) { clearTimeout(autoSwitchTimer); autoSwitchTimer = setTimeout(nextWorld, 15000); }
+                resetAutoSwitch(); // ロード完了後にタイマーをリセット
             }
         }
 
         function prevWorld() { loadWorld(currentIndex - 1); }
         function nextWorld() { loadWorld(currentIndex + 1); }
+        
+        // 移動ボタン関連
         function startMove(dir) { moveState = dir; }
         function stopMove() { moveState = null; }
-        function toggleAutoSwitch() {
-            isAuto = !isAuto;
-            document.getElementById("auto-btn").innerText = isAuto ? "自動切替: 15秒" : "自動切替: OFF";
-            if(isAuto) autoSwitchTimer = setTimeout(nextWorld, 15000);
-            else clearTimeout(autoSwitchTimer);
+
+        // モーダル・UI関連 (🌟 復活)
+        function toggleSettings() { 
+            document.getElementById("settings-modal").classList.toggle("active"); 
+        }
+        function toggleMoveUI() {
+            const show = document.getElementById("toggle-move-ui").checked;
+            document.getElementById("move-ui").style.display = show ? "grid" : "none";
+            document.getElementById("move-ui-updown").style.display = show ? "flex" : "none";
+        }
+        function toggleFilename() {
+            const show = document.getElementById("toggle-filename").checked;
+            document.getElementById("filename-display").style.display = show ? "block" : "none";
+        }
+        
+        // 自動切替関連 (🌟 復活)
+        function updateAutoSwitch() { resetAutoSwitch(); }
+        function resetAutoSwitch() {
+            if(autoSwitchTimer) clearInterval(autoSwitchTimer);
+            const interval = parseInt(document.getElementById("auto-switch").value, 10);
+            if(interval > 0) autoSwitchTimer = setInterval(() => { nextWorld(); }, interval);
         }
 
         // 起動処理
