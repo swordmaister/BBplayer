@@ -6,7 +6,18 @@
     <title>Babylon WebXR Advanced Viewer</title>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: sans-serif; user-select: none; touch-action: none; }
+        /* 🌟 文字選択や長押しメニューを完全に無効化する強力なリセット */
+        * {
+            -webkit-touch-callout: none; /* iOS Safari の長押しメニュー無効化 */
+            -webkit-user-select: none;   /* Safari */
+            -moz-user-select: none;      /* Firefox */
+            -ms-user-select: none;       /* IE/Edge */
+            user-select: none;           /* 標準 */
+            outline: none;
+            -webkit-tap-highlight-color: transparent; /* タップ時のハイライトを消す */
+        }
+
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
         #renderCanvas { width: 100%; height: 100%; touch-action: none; outline: none; }
         
         #loading { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); color: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
@@ -21,7 +32,7 @@
         #move-ui { position: absolute; bottom: 20px; left: 20px; z-index: 10; display: grid; grid-template-columns: 50px 50px 50px; grid-gap: 5px; pointer-events: none; }
         #move-ui .space { visibility: hidden; }
         #move-ui-updown { position: absolute; bottom: 20px; right: 20px; z-index: 10; display: flex; flex-direction: column; gap: 5px; pointer-events: none; }
-        .dpad-btn { width: 50px; height: 50px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; color: white; font-weight: bold; display: flex; justify-content: center; align-items: center; font-size: 18px; touch-action: manipulation; cursor: pointer; pointer-events: auto; }
+        .dpad-btn { width: 50px; height: 50px; background: rgba(255,255,255,0.2); border: 2px solid rgba(255,255,255,0.5); border-radius: 50%; color: white; font-weight: bold; display: flex; justify-content: center; align-items: center; font-size: 18px; touch-action: none; cursor: pointer; pointer-events: auto; }
         .dpad-btn:active { background: rgba(255,255,255,0.6); }
 
         #settings-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(20,20,20,0.95); border: 1px solid #777; border-radius: 10px; padding: 20px; z-index: 50; color: white; display: none; width: 300px; max-width: 80%; box-shadow: 0 4px 15px rgba(0,0,0,0.5); pointer-events: auto; }
@@ -30,9 +41,7 @@
         select { background: #333; color: white; border: 1px solid #666; padding: 5px; border-radius: 4px; max-width: 150px; }
     </style>
 </head>
-<body>
-
-    <div id="loading">
+<body oncontextmenu="return false;"> <div id="loading">
         <h2>読込中...</h2>
         <div id="loading-text">APIと通信しています</div>
     </div>
@@ -107,15 +116,13 @@
             scene.clearColor = new BABYLON.Color4(0.5, 0.8, 0.9, 1);
             scene.collisionsEnabled = true;
 
-            // カメラ作成
             camera = new BABYLON.UniversalCamera("UniversalCamera", new BABYLON.Vector3(0, 5, -20), scene);
             camera.checkCollisions = true;
             camera.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
-            camera.inputs.clear(); // 標準入力をクリア
+            camera.inputs.clear();
             
             let isPointerDown = false, lastX = 0, lastY = 0;
 
-            // スワイプ（首振り）処理
             scene.onPointerObservable.add((pi) => {
                 if (pi.type === BABYLON.PointerEventTypes.POINTERDOWN) {
                     isPointerDown = true;
@@ -127,14 +134,16 @@
                 else if (pi.type === BABYLON.PointerEventTypes.POINTERMOVE && isPointerDown) {
                     let dx = pi.event.clientX - lastX;
                     let dy = pi.event.clientY - lastY;
-                    camera.rotation.y -= dx * 0.005;
-                    camera.rotation.x -= dy * 0.005;
+                    
+                    // 🌟 視点移動を直感的な「指を動かした方向へ向く（FPS風）」にするため += に変更
+                    camera.rotation.y += dx * 0.005;
+                    camera.rotation.x += dy * 0.005;
                     camera.rotation.x = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camera.rotation.x));
+                    
                     lastX = pi.event.clientX; lastY = pi.event.clientY;
                 }
             });
 
-            // キーボード移動処理
             window.addEventListener('keydown', (e) => {
                 const key = e.key.toLowerCase();
                 if(key === 'w') moveState = 'w';
@@ -146,7 +155,6 @@
             });
             window.addEventListener('keyup', () => { moveState = null; });
 
-            // VR設定
             const baseGround = BABYLON.MeshBuilder.CreateGround("base-ground", {width: 500, height: 500}, scene);
             baseGround.checkCollisions = true; baseGround.isVisible = false;
 
@@ -155,14 +163,12 @@
                 xrHelper.baseExperience.featuresManager.enableFeature(BABYLON.WebXRFeatureName.MOVEMENT, "latest", {
                     xrInput: xrHelper.input, movementSpeed: 0.1, rotationSpeed: 0.05
                 });
-            } catch(e) { console.warn("VR/XR初期化スキップ:", e); }
+            } catch(e) {}
 
-            // ★ クラッシュの原因だった移動計算を「安全な数学モデル」に変更
             scene.onBeforeRenderObservable.add(() => {
                 const time = performance.now() * 0.001;
                 const dt = engine.getDeltaTime() * 0.001;
 
-                // アニメーション処理
                 currentAnimatables.forEach(item => {
                     const a = item.anim, m = item.mesh, axis = a.axis || 'y', speed = a.speed || 1;
                     if (a.type === 'rotate') m.rotation[axis] += speed * dt;
@@ -175,7 +181,6 @@
                     }
                 });
 
-                // 移動処理（VRモード中でない場合のみUIで動ける）
                 const isVR = xrHelper && xrHelper.baseExperience && xrHelper.baseExperience.state === BABYLON.WebXRState.IN_XR;
                 
                 if (moveState && camera && !isVR) {
