@@ -6,15 +6,15 @@
     <title>Babylon WebXR Advanced Viewer</title>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <style>
-        /* 🌟 文字選択や長押しメニューを完全に無効化する強力なリセット */
+        /* 文字選択や長押しメニューを完全に無効化する強力なリセット */
         * {
-            -webkit-touch-callout: none; /* iOS Safari の長押しメニュー無効化 */
-            -webkit-user-select: none;   /* Safari */
-            -moz-user-select: none;      /* Firefox */
-            -ms-user-select: none;       /* IE/Edge */
-            user-select: none;           /* 標準 */
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
             outline: none;
-            -webkit-tap-highlight-color: transparent; /* タップ時のハイライトを消す */
+            -webkit-tap-highlight-color: transparent;
         }
 
         body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
@@ -41,7 +41,9 @@
         select { background: #333; color: white; border: 1px solid #666; padding: 5px; border-radius: 4px; max-width: 150px; }
     </style>
 </head>
-<body oncontextmenu="return false;"> <div id="loading">
+<body oncontextmenu="return false;">
+
+    <div id="loading">
         <h2>読込中...</h2>
         <div id="loading-text">APIと通信しています</div>
     </div>
@@ -88,6 +90,12 @@
             <label>移動UI表示:</label>
             <input type="checkbox" id="toggle-move-ui" checked onchange="toggleMoveUI()">
         </div>
+        
+        <div class="setting-row">
+            <label>ソースコード:</label>
+            <button class="btn" id="copy-html-btn" onclick="copyCurrentHtml()" style="background: #0984e3;">HTMLをコピー</button>
+        </div>
+
         <div style="text-align: right; margin-top: 20px;">
             <button class="btn" onclick="toggleSettings()" style="background: #ff4757;">閉じる</button>
         </div>
@@ -104,6 +112,9 @@
         let currentScene = null, camera = null, xrHelper = null;
         let activeMeshes = [], activeLights = [], activeTemplates = [], currentAnimatables = [];
         let playlist = [], currentIndex = -1, autoSwitchTimer = null;
+        
+        // 🌟 コピー用に現在のHTMLテキストを保持する変数
+        let currentHtmlContent = "";
         
         let moveState = null;
         const MOVE_SPEED = 0.15;
@@ -135,7 +146,6 @@
                     let dx = pi.event.clientX - lastX;
                     let dy = pi.event.clientY - lastY;
                     
-                    // 🌟 視点移動を直感的な「指を動かした方向へ向く（FPS風）」にするため += に変更
                     camera.rotation.y += dx * 0.005;
                     camera.rotation.x += dy * 0.005;
                     camera.rotation.x = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camera.rotation.x));
@@ -333,6 +343,10 @@
             try {
                 const res = await fetch(`${GAS_API_URL}?action=get&id=${playlist[currentIndex].id}`);
                 const htmlText = await res.text();
+                
+                // 🌟 コピー用に現在のHTMLを保存
+                currentHtmlContent = htmlText;
+                
                 const doc = new DOMParser().parseFromString(htmlText, "text/html");
                 
                 const envTag = doc.getElementById("env-data");
@@ -350,6 +364,29 @@
                 document.getElementById("loading").classList.remove("active");
                 resetAutoSwitch();
             }
+        }
+        
+        // 🌟 HTMLコードをクリップボードにコピーする処理
+        function copyCurrentHtml() {
+            if (!currentHtmlContent) {
+                alert("コピーするHTMLデータがまだありません。");
+                return;
+            }
+            
+            navigator.clipboard.writeText(currentHtmlContent).then(() => {
+                const btn = document.getElementById("copy-html-btn");
+                const originalText = btn.innerText;
+                btn.innerText = "コピーしました！";
+                btn.style.background = "#00b894"; // 成功時に色を変える
+                
+                setTimeout(() => { 
+                    btn.innerText = originalText; 
+                    btn.style.background = "#0984e3"; // 元の色に戻す
+                }, 2000);
+            }).catch(err => {
+                console.error("クリップボードへのコピーに失敗:", err);
+                alert("お使いのブラウザではコピー機能がサポートされていないか、ブロックされました。");
+            });
         }
 
         function prevWorld() { loadWorld(currentIndex - 1); }
