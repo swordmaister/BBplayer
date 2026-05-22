@@ -3,29 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Babylon WebXR Advanced Viewer</title>
-    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <title>Babylon WebXR Pure Viewer</title>
     <style>
+        /* UIの誤作動防止用リセット */
         * {
-            -webkit-touch-callout: none;
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
-            outline: none;
-            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none; -webkit-user-select: none;
+            -moz-user-select: none; -ms-user-select: none; user-select: none;
+            outline: none; -webkit-tap-highlight-color: transparent;
         }
 
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
-        #renderCanvas { width: 100%; height: 100%; touch-action: none; outline: none; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #000; font-family: sans-serif; }
+        
+        /* 🌟 純粋なビューワーとしてのiframe */
+        #viewer { width: 100%; height: 100%; border: none; display: block; }
         
         #loading { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); color: #fff; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 100; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
         #loading.active { opacity: 1; pointer-events: auto; }
         #loading h2 { margin: 0 0 10px 0; }
 
         #header-ui { position: absolute; top: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; z-index: 10; pointer-events: none; }
-        .panel { background: rgba(0, 0, 0, 0.6); padding: 10px; border-radius: 8px; color: white; border: 1px solid #555; backdrop-filter: blur(4px); display:flex; gap:10px; align-items:center; pointer-events: auto; }
-        .btn { background: #333; color: white; border: 1px solid #666; padding: 8px 12px; border-radius: 4px; cursor: pointer; }
+        .panel { background: rgba(0, 0, 0, 0.6); padding: 10px; border-radius: 8px; color: white; border: 1px solid #555; backdrop-filter: blur(4px); display:flex; gap:10px; align-items:center; pointer-events: auto; max-width: 65%; }
+        #filename-display { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; }
+        .btn { background: #333; color: white; border: 1px solid #666; padding: 8px 12px; border-radius: 4px; cursor: pointer; white-space: nowrap; }
         .btn:active { background: #555; }
 
         #move-ui { position: absolute; bottom: 20px; left: 20px; z-index: 10; display: grid; grid-template-columns: 50px 50px 50px; grid-gap: 5px; pointer-events: none; }
@@ -59,15 +58,15 @@
     </div>
 
     <div id="move-ui">
-        <div class="space"></div><div class="dpad-btn" onpointerdown="startMove('w')" onpointerup="stopMove()" onpointerleave="stopMove()">W</div><div class="space"></div>
-        <div class="dpad-btn" onpointerdown="startMove('a')" onpointerup="stopMove()" onpointerleave="stopMove()">A</div>
-        <div class="dpad-btn" onpointerdown="startMove('s')" onpointerup="stopMove()" onpointerleave="stopMove()">S</div>
-        <div class="dpad-btn" onpointerdown="startMove('d')" onpointerup="stopMove()" onpointerleave="stopMove()">D</div>
+        <div class="space"></div><div class="dpad-btn" onpointerdown="startMove('w')" onpointerup="stopMove()" onpointerout="stopMove()">W</div><div class="space"></div>
+        <div class="dpad-btn" onpointerdown="startMove('a')" onpointerup="stopMove()" onpointerout="stopMove()">A</div>
+        <div class="dpad-btn" onpointerdown="startMove('s')" onpointerup="stopMove()" onpointerout="stopMove()">S</div>
+        <div class="dpad-btn" onpointerdown="startMove('d')" onpointerup="stopMove()" onpointerout="stopMove()">D</div>
     </div>
     
     <div id="move-ui-updown">
-        <div class="dpad-btn" onpointerdown="startMove('up')" onpointerup="stopMove()" onpointerleave="stopMove()">▲</div>
-        <div class="dpad-btn" onpointerdown="startMove('down')" onpointerup="stopMove()" onpointerleave="stopMove()">▼</div>
+        <div class="dpad-btn" onpointerdown="startMove('up')" onpointerup="stopMove()" onpointerout="stopMove()">▲</div>
+        <div class="dpad-btn" onpointerdown="startMove('down')" onpointerup="stopMove()" onpointerout="stopMove()">▼</div>
     </div>
 
     <div id="settings-modal">
@@ -79,10 +78,8 @@
         <div class="setting-row">
             <label>自動切替:</label>
             <select id="auto-switch" onchange="updateAutoSwitch()">
-                <option value="0">オフ</option>
-                <option value="5000">5秒</option>
-                <option value="10000">10秒</option>
-                <option value="30000">30秒</option>
+                <option value="0">オフ</option><option value="5000">5秒</option>
+                <option value="10000">10秒</option><option value="30000">30秒</option>
             </select>
         </div>
         <div class="setting-row">
@@ -98,268 +95,65 @@
         </div>
     </div>
 
-    <canvas id="renderCanvas"></canvas>
+    <iframe id="viewer" allow="xr-spatial-tracking"></iframe>
 
     <script>
         const GAS_API_URL = "https://script.google.com/macros/s/AKfycby6LBjdiOqDbtgmoQZAybLDQN-B-F9188sF5DkJE5ecdX9ydRiqSZHFLSGQ1DGPnSh7/exec";
         
-        const canvas = document.getElementById("renderCanvas");
-        const engine = new BABYLON.Engine(canvas, true);
-        
-        let currentScene = null, camera = null, xrHelper = null;
-        let activeMeshes = [], activeLights = [], activeTemplates = [], currentAnimatables = [];
-        let materialsMap = {}; // 🌟 マテリアルを保持する辞書
-        
         let playlist = [], currentIndex = -1, autoSwitchTimer = null;
         let currentHtmlContent = "";
         let moveState = null;
-        const MOVE_SPEED = 0.15;
 
         // ---------------------------------------------------------
-        // 1. 基盤シーン
+        // 🌟 D-PADの信号をiframe内に送り込む処理
         // ---------------------------------------------------------
-        async function createBaseScene() {
-            const scene = new BABYLON.Scene(engine);
-            scene.clearColor = new BABYLON.Color4(0.5, 0.8, 0.9, 1);
-            scene.collisionsEnabled = true;
-
-            camera = new BABYLON.UniversalCamera("UniversalCamera", new BABYLON.Vector3(0, 5, -20), scene);
-            camera.checkCollisions = true;
-            camera.ellipsoid = new BABYLON.Vector3(0.5, 1, 0.5);
-            camera.inputs.clear();
-            
-            let isPointerDown = false, lastX = 0, lastY = 0;
-
-            scene.onPointerObservable.add((pi) => {
-                if (pi.type === BABYLON.PointerEventTypes.POINTERDOWN) {
-                    isPointerDown = true;
-                    lastX = pi.event.clientX; lastY = pi.event.clientY;
-                }
-                else if (pi.type === BABYLON.PointerEventTypes.POINTERUP || pi.type === BABYLON.PointerEventTypes.POINTEROUT) {
-                    isPointerDown = false;
-                }
-                else if (pi.type === BABYLON.PointerEventTypes.POINTERMOVE && isPointerDown) {
-                    let dx = pi.event.clientX - lastX;
-                    let dy = pi.event.clientY - lastY;
-                    camera.rotation.y += dx * 0.005;
-                    camera.rotation.x += dy * 0.005;
-                    camera.rotation.x = Math.max(-Math.PI/2.2, Math.min(Math.PI/2.2, camera.rotation.x));
-                    lastX = pi.event.clientX; lastY = pi.event.clientY;
-                }
-            });
-
-            window.addEventListener('keydown', (e) => {
-                const key = e.key.toLowerCase();
-                if(key === 'w') moveState = 'w';
-                if(key === 'a') moveState = 'a';
-                if(key === 's') moveState = 's';
-                if(key === 'd') moveState = 'd';
-                if(e.key === 'ArrowUp') moveState = 'up';
-                if(e.key === 'ArrowDown') moveState = 'down';
-            });
-            window.addEventListener('keyup', () => { moveState = null; });
-
-            const baseGround = BABYLON.MeshBuilder.CreateGround("base-ground", {width: 500, height: 500}, scene);
-            baseGround.checkCollisions = true; baseGround.isVisible = false;
-
-            try {
-                xrHelper = await scene.createDefaultXRExperienceAsync({ floorMeshes: [baseGround] });
-                xrHelper.baseExperience.featuresManager.enableFeature(BABYLON.WebXRFeatureName.MOVEMENT, "latest", {
-                    xrInput: xrHelper.input, movementSpeed: 0.1, rotationSpeed: 0.05
-                });
-            } catch(e) {}
-
-            scene.onBeforeRenderObservable.add(() => {
-                const time = performance.now() * 0.001;
-                const dt = engine.getDeltaTime() * 0.001;
-
-                currentAnimatables.forEach(item => {
-                    const a = item.anim, m = item.mesh, axis = a.axis || 'y', speed = a.speed || 1;
-                    if (a.type === 'rotate') m.rotation[axis] += speed * dt;
-                    else if (a.type === 'move_pingpong') {
-                        m.position[axis] = item.initPos[axis] + Math.sin(time * speed + item.offset) * (a.distance || 5);
-                    }
-                    else if (a.type === 'move_loop') {
-                        const dist = a.distance || 20;
-                        m.position[axis] = item.initPos[axis] + ((time * speed + item.offset * dist) % (dist * 2)) - dist;
-                    }
-                });
-
-                const isVR = xrHelper && xrHelper.baseExperience && xrHelper.baseExperience.state === BABYLON.WebXRState.IN_XR;
-                if (moveState && camera && !isVR) {
-                    let dx = 0, dz = 0, dy = 0;
-                    if (moveState === 'w') dz = 1;
-                    if (moveState === 's') dz = -1;
-                    if (moveState === 'a') dx = -1;
-                    if (moveState === 'd') dx = 1;
-                    if (moveState === 'up') dy = 1;
-                    if (moveState === 'down') dy = -1;
-
-                    if (dx !== 0 || dz !== 0 || dy !== 0) {
-                        const rotY = camera.rotation.y;
-                        camera.position.x += (dx * Math.cos(rotY) + dz * Math.sin(rotY)) * MOVE_SPEED;
-                        camera.position.z += (-dx * Math.sin(rotY) + dz * Math.cos(rotY)) * MOVE_SPEED;
-                        camera.position.y += dy * MOVE_SPEED;
-                    }
-                }
-            });
-            return scene;
-        }
-
-        // ---------------------------------------------------------
-        // 2. 🌟 【超重要修正】AIデータ完全解釈パースエンジン
-        // ---------------------------------------------------------
-
-        // A. マテリアルの解釈 (Physical, PBR を Standardにフォールバックさせつつ色・透明度・発光を保持)
-        const parseMaterial = (item, scene) => {
-            const mat = new BABYLON.StandardMaterial(item.id || "mat_" + Math.random(), scene);
-            const diffColor = item.color || item.albedoColor || item.diffuseColor;
-            if (diffColor) mat.diffuseColor = BABYLON.Color3.FromHexString(diffColor.substring(0,7));
-            if (item.emissiveColor) mat.emissiveColor = BABYLON.Color3.FromHexString(item.emissiveColor.substring(0,7));
-            if (item.alpha !== undefined) {
-                mat.alpha = item.alpha;
-                mat.transparencyMode = BABYLON.Material.MATERIAL_ALPHABLEND;
-            }
-            return mat;
-        };
-
-        // B. メッシュの生成 (Plane対応, transform完全適用, マテリアル参照)
-        const createMeshFromItem = (item, name, scene) => {
-            let mesh; const opts = item.options || {};
-            switch(item.type) {
-                case "box": mesh = BABYLON.MeshBuilder.CreateBox(name, opts, scene); break;
-                case "sphere": mesh = BABYLON.MeshBuilder.CreateSphere(name, opts, scene); break;
-                case "cylinder": mesh = BABYLON.MeshBuilder.CreateCylinder(name, opts, scene); break;
-                case "cone": opts.diameterTop = 0; opts.diameterBottom = opts.diameter || 1; mesh = BABYLON.MeshBuilder.CreateCylinder(name, opts, scene); break;
-                case "plane": mesh = BABYLON.MeshBuilder.CreatePlane(name, opts, scene); break; // 🌟 plane対応
-                default: mesh = BABYLON.MeshBuilder.CreateBox(name, {size: 1}, scene);
-            }
-            
-            // 🌟 テンプレート自体のTransform（位置・回転・スケール）を適用
-            if (item.position) mesh.position = new BABYLON.Vector3(item.position[0], item.position[1], item.position[2]);
-            if (item.rotation) mesh.rotation = new BABYLON.Vector3(item.rotation[0], item.rotation[1], item.rotation[2]);
-            if (item.scaling) mesh.scaling = new BABYLON.Vector3(item.scaling[0], item.scaling[1], item.scaling[2]);
-            
-            // 🌟 マテリアルのID参照対応
-            if (item.materialId && materialsMap[item.materialId]) {
-                mesh.material = materialsMap[item.materialId];
-            } else {
-                mesh.material = parseMaterial(item, scene);
-            }
-            
-            mesh.checkCollisions = true;
-            return mesh;
-        };
-
-        function applyAdvancedWorldData(env, sub) {
-            activeMeshes.forEach(m => m.dispose());
-            activeLights.forEach(l => l.dispose());
-            activeTemplates.forEach(t => t.dispose());
-            activeMeshes = []; activeLights = []; activeTemplates = []; currentAnimatables = []; materialsMap = {};
-
-            // 1. 環境設定
-            if (env.clearColor) currentScene.clearColor = BABYLON.Color4.FromHexString(env.clearColor.padEnd(9, 'F'));
-            if (env.lights) {
-                env.lights.forEach((l, i) => {
-                    const dir = l.dir || [0, 1, 0];
-                    if (l.type === "hemispheric") {
-                        const light = new BABYLON.HemisphericLight("l"+i, new BABYLON.Vector3(dir[0], dir[1], dir[2]), currentScene);
-                        light.intensity = l.intensity || 1;
-                        if(l.diffuse) light.diffuse = BABYLON.Color3.FromHexString(l.diffuse.substring(0,7));
-                        if(l.groundColor) light.groundColor = BABYLON.Color3.FromHexString(l.groundColor.substring(0,7));
-                        activeLights.push(light);
-                    } else if (l.type === "directional") {
-                        const light = new BABYLON.DirectionalLight("dl"+i, new BABYLON.Vector3(dir[0], dir[1], dir[2]), currentScene);
-                        light.intensity = l.intensity || 0.8;
-                        activeLights.push(light);
-                    }
-                });
-            }
-            if (env.ground) activeMeshes.push(createMeshFromItem(env.ground, "env-ground", currentScene));
-
-            // 2. 主題構築（Templates & Instances）
-            if (sub.templates && sub.instances) {
-                const templatesMap = {};
-                
-                // 🌟 Templatesの解析
-                sub.templates.forEach(t => {
-                    // 🌟 【最重要】Material テンプレートの場合はメッシュを作らずに辞書に登録してスキップ
-                    if (t.type && t.type.toLowerCase().includes("material")) {
-                        materialsMap[t.id] = parseMaterial(t, currentScene);
-                        return;
-                    }
-
-                    // メッシュテンプレート
-                    const m = createMeshFromItem(t, "tpl_" + t.id, currentScene);
-                    m.isVisible = false; 
-                    templatesMap[t.id] = m;
-                    activeTemplates.push(m);
-                });
-                
-                // 🌟 Instancesの解析
-                sub.instances.forEach((inst, i) => {
-                    const tplId = inst.templateId || inst.instanceId || inst.id;
-                    const tpl = templatesMap[tplId];
-                    if (!tpl) return;
-
-                    // パターンA: 複数配置 (positions)
-                    if (inst.positions) {
-                        inst.positions.forEach((pos, j) => {
-                            const newInst = tpl.createInstance("inst_" + i + "_" + j);
-                            newInst.position = new BABYLON.Vector3(pos[0], pos[1], pos[2]);
-                            if (inst.rotation) newInst.rotation = new BABYLON.Vector3(inst.rotation[0], inst.rotation[1], inst.rotation[2]);
-                            if (inst.scaling) newInst.scaling = new BABYLON.Vector3(inst.scaling[0], inst.scaling[1], inst.scaling[2]);
-                            
-                            newInst.checkCollisions = true;
-                            if(inst.animation) currentAnimatables.push({ mesh: newInst, anim: inst.animation, initPos: newInst.position.clone(), offset: 0 });
-                            activeMeshes.push(newInst);
-                        });
-                    } 
-                    // パターンB: 単体配置 (直書きの position/rotation/scaling)
-                    else if (inst.position || inst.rotation || inst.scaling) {
-                        const newInst = tpl.createInstance("inst_" + i);
-                        if (inst.position) newInst.position = new BABYLON.Vector3(inst.position[0], inst.position[1], inst.position[2]);
-                        else newInst.position = new BABYLON.Vector3(0, 0, 0); // fallback
-
-                        if (inst.rotation) newInst.rotation = new BABYLON.Vector3(inst.rotation[0], inst.rotation[1], inst.rotation[2]);
-                        if (inst.scaling) newInst.scaling = new BABYLON.Vector3(inst.scaling[0], inst.scaling[1], inst.scaling[2]);
-                        
-                        newInst.checkCollisions = true;
-                        if(inst.animation) currentAnimatables.push({ mesh: newInst, anim: inst.animation, initPos: newInst.position.clone(), offset: 0 });
-                        activeMeshes.push(newInst);
-                    }
+        const injectionScript = `
+        <script>
+            window.addEventListener('message', (e) => {
+                if (!window.BABYLON || !e.data || !e.data.move) return;
+                try {
+                    const engines = BABYLON.Engine.Instances;
+                    if (engines.length === 0) return;
+                    const scn = engines[0].scenes[0];
+                    if (!scn || !scn.activeCamera) return;
                     
-                    // パターンC: ばらまき配置 (scatter)
-                    if (inst.scatter) {
-                        const s = inst.scatter, count = s.count || 10, rx = s.rangeX || [-10, 10], rz = s.rangeZ || [-10, 10], by = s.baseY || 0, scaleR = s.randomScale || [1, 1];
-                        for (let k = 0; k < count; k++) {
-                            const newInst = tpl.createInstance("scat_" + i + "_" + k);
-                            newInst.position = new BABYLON.Vector3(Math.random()*(rx[1]-rx[0])+rx[0], by, Math.random()*(rz[1]-rz[0])+rz[0]);
-                            
-                            if (inst.rotation) newInst.rotation = new BABYLON.Vector3(inst.rotation[0], inst.rotation[1], inst.rotation[2]);
-                            else newInst.rotation = new BABYLON.Vector3(0, Math.random() * Math.PI * 2, 0);
-
-                            const sc = Math.random() * (scaleR[1] - scaleR[0]) + scaleR[0];
-                            if (inst.scaling) newInst.scaling = new BABYLON.Vector3(inst.scaling[0]*sc, inst.scaling[1]*sc, inst.scaling[2]*sc);
-                            else newInst.scaling = new BABYLON.Vector3(sc, sc, sc);
-                            
-                            newInst.checkCollisions = true;
-                            if(inst.animation) currentAnimatables.push({ mesh: newInst, anim: inst.animation, initPos: newInst.position.clone(), offset: Math.random() * Math.PI * 2 });
-                            activeMeshes.push(newInst);
-                        }
+                    const cam = scn.activeCamera;
+                    const move = e.data.move;
+                    const speed = 0.3;
+                    
+                    // ArcRotateCamera (対象を中心に回るカメラ) の場合
+                    if (cam.getClassName().includes("ArcRotate")) {
+                        const fwd = cam.getDirection(BABYLON.Vector3.Forward());
+                        const right = cam.getDirection(BABYLON.Vector3.Right());
+                        fwd.y = 0; right.y = 0; fwd.normalize(); right.normalize();
+                        
+                        if (move === 'w') cam.radius = Math.max(1, cam.radius - speed*2);
+                        if (move === 's') cam.radius += speed*2;
+                        if (move === 'a') cam.target.subtractInPlace(right.scale(speed));
+                        if (move === 'd') cam.target.addInPlace(right.scale(speed));
+                        if (move === 'up') cam.target.y += speed;
+                        if (move === 'down') cam.target.y -= speed;
+                    } 
+                    // UniversalCamera (FPS視点のカメラ) の場合
+                    else {
+                        const fwd = cam.getDirection(BABYLON.Vector3.Forward());
+                        const right = cam.getDirection(BABYLON.Vector3.Right());
+                        fwd.y = 0; right.y = 0; fwd.normalize(); right.normalize();
+                        
+                        if (move === 'w') cam.position.addInPlace(fwd.scale(speed));
+                        if (move === 's') cam.position.subtractInPlace(fwd.scale(speed));
+                        if (move === 'a') cam.position.subtractInPlace(right.scale(speed));
+                        if (move === 'd') cam.position.addInPlace(right.scale(speed));
+                        if (move === 'up') cam.position.y += speed;
+                        if (move === 'down') cam.position.y -= speed;
                     }
-                });
-            }
-            
-            const isVR = xrHelper && xrHelper.baseExperience && xrHelper.baseExperience.state === BABYLON.WebXRState.IN_XR;
-            if (!isVR) {
-                camera.position = new BABYLON.Vector3(0, 5, -20);
-                camera.setTarget(new BABYLON.Vector3(0, 5, 0));
-            }
-        }
+                } catch(err) {}
+            });
+        <\/script>
+        </body>`;
 
         // ---------------------------------------------------------
-        // 3. UI・通信
+        // 通信・読み込みロジック
         // ---------------------------------------------------------
         async function fetchPlaylist() {
             document.getElementById("loading-text").innerText = "リストを取得中...";
@@ -390,38 +184,64 @@
                 const htmlText = await res.text();
                 currentHtmlContent = htmlText;
                 
-                const doc = new DOMParser().parseFromString(htmlText, "text/html");
-                const envTag = doc.getElementById("env-data");
-                const subTag = doc.getElementById("sub-data");
-
-                if (envTag) {
-                    const envData = JSON.parse(envTag.textContent);
-                    const subData = subTag ? JSON.parse(subTag.textContent) : {};
-                    applyAdvancedWorldData(envData, subData);
-                } else {
-                    document.getElementById("filename-display").innerText = `[非対応形式] ${playlist[currentIndex].name}`;
-                }
-            } catch (e) { console.error(e); } 
+                // 🌟 ここが極意：取得したHTMLに「D-PAD受信用の短いスクリプト」だけをこっそり混ぜて、iframeに流し込む
+                const finalHtml = htmlText.replace('</body>', injectionScript);
+                document.getElementById("viewer").srcdoc = finalHtml;
+                
+            } catch (e) { 
+                console.error("Load Error:", e);
+                document.getElementById("filename-display").innerText = `[エラー] ${e.message}`;
+            } 
             finally {
-                document.getElementById("loading").classList.remove("active");
-                resetAutoSwitch();
+                // iframeの描画時間を少し待ってからローディングを消す
+                setTimeout(() => {
+                    document.getElementById("loading").classList.remove("active");
+                    resetAutoSwitch();
+                }, 500);
             }
         }
         
         function copyCurrentHtml() {
-            if (!currentHtmlContent) { alert("データがありません。"); return; }
+            if (!currentHtmlContent) return;
             navigator.clipboard.writeText(currentHtmlContent).then(() => {
                 const btn = document.getElementById("copy-html-btn");
                 const originalText = btn.innerText;
                 btn.innerText = "コピーしました！"; btn.style.background = "#00b894";
                 setTimeout(() => { btn.innerText = originalText; btn.style.background = "#0984e3"; }, 2000);
-            }).catch(err => { alert("コピー機能がブロックされました。"); });
+            });
         }
+
+        // ---------------------------------------------------------
+        // D-PAD の連続入力ループ
+        // ---------------------------------------------------------
+        function startMove(dir) { moveState = dir; }
+        function stopMove() { moveState = null; }
+        
+        function renderLoop() {
+            if (moveState) {
+                const iframe = document.getElementById('viewer');
+                if (iframe && iframe.contentWindow) {
+                    // iframe内のBabylonに移動命令を送る
+                    iframe.contentWindow.postMessage({ move: moveState }, '*');
+                }
+            }
+            requestAnimationFrame(renderLoop);
+        }
+        requestAnimationFrame(renderLoop);
+
+        // ---------------------------------------------------------
+        // UI操作
+        // ---------------------------------------------------------
+        window.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+            if(key === 'w') moveState = 'w'; if(key === 'a') moveState = 'a';
+            if(key === 's') moveState = 's'; if(key === 'd') moveState = 'd';
+            if(e.key === 'ArrowUp') moveState = 'up'; if(e.key === 'ArrowDown') moveState = 'down';
+        });
+        window.addEventListener('keyup', () => { moveState = null; });
 
         function prevWorld() { loadWorld(currentIndex - 1); }
         function nextWorld() { loadWorld(currentIndex + 1); }
-        function startMove(dir) { moveState = dir; }
-        function stopMove() { moveState = null; }
         function toggleSettings() { document.getElementById("settings-modal").classList.toggle("active"); }
         function loadWorldFromSelect() { loadWorld(parseInt(document.getElementById("fileSelect").value, 10)); }
         
@@ -437,18 +257,15 @@
             if(interval > 0) autoSwitchTimer = setInterval(() => { nextWorld(); }, interval);
         }
 
-        createBaseScene().then(scene => {
-            currentScene = scene;
-            engine.runRenderLoop(() => { scene.render(); });
-            
-            document.getElementById("loading").classList.add("active");
-            fetchPlaylist().then(list => {
-                playlist = list;
-                if(playlist.length > 0) { populateFileSelect(); loadWorld(0); } 
-                else document.getElementById("loading").classList.remove("active");
-            });
+        // 起動処理
+        document.getElementById("loading").classList.add("active");
+        fetchPlaylist().then(list => {
+            playlist = list;
+            if(playlist.length > 0) { populateFileSelect(); loadWorld(0); } 
+            else document.getElementById("loading").classList.remove("active");
+        }).catch(e => {
+            document.getElementById("loading-text").innerText = "通信エラー: " + e.message;
         });
-        window.addEventListener("resize", () => { engine.resize(); });
     </script>
 </body>
 </html>
